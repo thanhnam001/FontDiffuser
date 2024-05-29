@@ -293,6 +293,9 @@ class GBlock2(nn.Module):
 def style_encoder_textedit_addskip_arch(ch =64,out_channel_multiplier = 1, input_nc = 3):
     arch = {}
     n=2
+    arch[64] = {'in_channels':   [input_nc] + [ch*item for item in  [1,2,4,8]],
+                                'out_channels' : [item * ch for item in [1,2,4,8,16]],
+                                'resolution': [48,24,12,6,3]}
     arch[96] = {'in_channels':   [input_nc] + [ch*item for item in  [1,2,4,8]],
                                 'out_channels' : [item * ch for item in [1,2,4,8,16]],
                                 'resolution': [48,24,12,6,3]}
@@ -357,6 +360,8 @@ class StyleEncoder(ModelMixin, ConfigMixin):
             self.save_featrues = [0,1,2,3,4]
         elif self.resolution == 256:
             self.save_featrues = [0,1,2,3,4,5]
+        elif self.resolution == 64:
+            self.save_featrues = [0,1,2,3,4]
         
         self.out_channel_nultipiler = 1
         self.arch = style_encoder_textedit_addskip_arch(
@@ -425,7 +430,8 @@ class StyleEncoder(ModelMixin, ConfigMixin):
                 self.param_count += sum([p.data.nelement() for p in module.parameters()])
         print('Param count for D''s initialized parameters: %d' % self.param_count)
 
-    def forward(self,x):        
+    def forward(self,x):  
+        # x: (12, 3, 96, 96)      
         h = x
         residual_features = []
         residual_features.append(h)
@@ -438,5 +444,11 @@ class StyleEncoder(ModelMixin, ConfigMixin):
         style_emd = h        
         h = F.adaptive_avg_pool2d(h,(1,1))
         h = h.view(h.size(0),-1)
-        
+        # style_emd: (12, 1024, 3, 3)
+        # h: (12, 1024)
+        # residual_features: [torch.Size([12, 3, 96, 96])
+        # torch.Size([12, 64, 48, 48])
+        # torch.Size([12, 128, 24, 24])
+        # torch.Size([12, 256, 12, 12])
+        # torch.Size([12, 512, 6, 6])]
         return style_emd,h,residual_features

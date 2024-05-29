@@ -1,8 +1,8 @@
-accelerate launch train.py \
+CUDA_VISIBLE_DEVICES=2 torchrun --nproc_per_node=1 --nnodes=1 train3.py \
     --seed=123 \
     --experience_name="FontDiffuser_training_phase_1" \
-    --data_root="data_examples" \
-    --output_dir="outputs/FontDiffuser" \
+    --data_root="iam_data" \
+    --output_dir="outputs/v3" \
     --report_to="tensorboard" \
     --resolution=96 \
     --style_image_size=96 \
@@ -11,7 +11,7 @@ accelerate launch train.py \
     --channel_attn=True \
     --content_start_channel=64 \
     --style_start_channel=64 \
-    --train_batch_size=16 \
+    --train_batch_size=10 \
     --perceptual_coefficient=0.01 \
     --offset_coefficient=0.5 \
     --max_train_steps=440000 \

@@ -197,10 +197,13 @@ class UNet(ModelMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
-        encoder_hidden_states: torch.Tensor,
+        encoder_hidden_states: list[torch.Tensor],
         content_encoder_downsample_size: int = 4,
         return_dict: bool = False,
     ) -> Union[UNetOutput, Tuple]:
+        # encoder_hidden_states: [style_img_feature: (B, C, H, W), content_residual_features: 5*[], 
+        #                         style_hidden_states: (B, H*W, C), style_content_res_features: 5*[]]
+        
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
@@ -279,8 +282,9 @@ class UNet(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
-                    style_structure_features=encoder_hidden_states[3],
-                    encoder_hidden_states=encoder_hidden_states[2],
+                    style_structure_features=encoder_hidden_states[3], # style_content_res_features
+                    encoder_hidden_states=encoder_hidden_states[2], # style_hidden_states
+                    content_hidden_state=encoder_hidden_states[1], # content_feature
                 )
                 offset_out_sum += offset_out
             else:

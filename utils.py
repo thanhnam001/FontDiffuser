@@ -20,25 +20,29 @@ def save_args_to_yaml(args, output_file):
 
 
 def save_single_image(save_dir, image):
-
-    save_path = f"{save_dir}/out_single.png"
+    i = 0
+    while os.path.exists(f"{save_dir}/out_single_{i}.jpg"):
+        i += 1
+    save_path = f"{save_dir}/out_single_{i}.jpg"
     image.save(save_path)
 
 
 def save_image_with_content_style(save_dir, image, content_image_pil, content_image_path, style_image_path, resolution):
-    
-    new_image = Image.new('RGB', (resolution*3, resolution))
+    h,w = 64, 256 # fix this
+    new_image = Image.new('RGB', (w*3, h))
     if content_image_pil is not None:
         content_image = content_image_pil
     else:
-        content_image = Image.open(content_image_path).convert("RGB").resize((resolution, resolution), Image.BILINEAR)
-    style_image = Image.open(style_image_path).convert("RGB").resize((resolution, resolution), Image.BILINEAR)
+        content_image = Image.open(content_image_path).convert("RGB").resize((w, h), Image.BILINEAR)
+    style_image = Image.open(style_image_path).convert("RGB").resize((w, h), Image.BILINEAR)
 
     new_image.paste(content_image, (0, 0))
-    new_image.paste(style_image, (resolution, 0))
-    new_image.paste(image, (resolution*2, 0))
-
-    save_path = f"{save_dir}/out_with_cs.jpg"
+    new_image.paste(style_image, (w, 0))
+    new_image.paste(image, (w*2, 0))
+    i = 0
+    while os.path.exists(f"{save_dir}/out_with_cs_{i}.jpg"):
+        i += 1
+    save_path = f"{save_dir}/out_with_cs_{i}.jpg"
     new_image.save(save_path)
 
 
@@ -98,25 +102,24 @@ def load_ttf(ttf_path, fsize=128):
     return font
 
 
-def ttf2im(font, char, fsize=128):
-    
+def ttf2im(font, char, height=128, width=128):
     try:
         surface, _ = font.render(char)
     except:
         print("No glyph for char {}".format(char))
         return
-    bg = np.full((fsize, fsize), 255)
+    bg = np.full((height, width), 255)
     imo = pygame.surfarray.pixels_alpha(surface).transpose(1, 0)
     imo = 255 - np.array(Image.fromarray(imo))
     im = copy.deepcopy(bg)
     h, w = imo.shape[:2]
-    if h > fsize:
-        h, w = fsize, round(w*fsize/h)
+    if h > height:
+        h, w = height, round(w * height / h)
         imo = cv2.resize(imo, (w, h))
-    if w > fsize:
-        h, w = round(h*fsize/w), fsize
+    if w > width:
+        h, w = round(h * width / w), width
         imo = cv2.resize(imo, (w, h))
-    x, y = round((fsize-w)/2), round((fsize-h)/2)
+    x, y = round((width - w) / 2), round((height - h) / 2)
     im[y:h+y, x:x+w] = imo
     pil_im = Image.fromarray(im.astype('uint8')).convert('RGB')
     

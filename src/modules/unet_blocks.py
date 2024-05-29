@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torchvision.ops import DeformConv2d
+from einops import rearrange
 
 from .attention import (SpatialTransformer, 
                         OffsetRefStrucInter, 
@@ -154,12 +155,20 @@ class UNetMidMCABlock2D(nn.Module):
 
         for _ in range(num_layers):
             content_attentions.append(
-                ChannelAttnBlock(
-                    in_channels=in_channels + content_channel,
-                    out_channels=in_channels,
-                    non_linearity=resnet_act_fn,
-                    channel_attn=channel_attn,
-                    reduction=reduction,
+                # ChannelAttnBlock(
+                #     in_channels=in_channels + content_channel,
+                #     out_channels=in_channels,
+                #     non_linearity=resnet_act_fn,
+                #     channel_attn=channel_attn,
+                #     reduction=reduction,
+                # )
+                SpatialTransformer(
+                    in_channels,
+                    attn_num_head_channels,
+                    in_channels // attn_num_head_channels,
+                    depth=1,
+                    context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
             style_attentions.append(
@@ -202,14 +211,14 @@ class UNetMidMCABlock2D(nn.Module):
         for content_attn, style_attn, resnet in zip(self.content_attentions, self.style_attentions, self.resnets[1:]):
             
             # content
-            current_content_feature = encoder_hidden_states[1][index]
+            current_content_feature = encoder_hidden_states[1]#[index] # content_residual_features
             hidden_states = content_attn(hidden_states, current_content_feature)
             
             # t_embed
             hidden_states = resnet(hidden_states, temb)
 
             # style
-            current_style_feature = encoder_hidden_states[0]
+            current_style_feature = encoder_hidden_states[0] # style_img_feature
             batch_size, channel, height, width = current_style_feature.shape
             current_style_feature = current_style_feature.permute(0, 2, 3, 1).reshape(batch_size, height*width, channel)
             hidden_states = style_attn(hidden_states, context=current_style_feature)
@@ -251,13 +260,21 @@ class MCADownBlock2D(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             content_attentions.append(
-                ChannelAttnBlock(
-                    in_channels=in_channels+content_channel,
-                    out_channels=in_channels,
-                    groups=resnet_groups,
-                    non_linearity=resnet_act_fn,
-                    channel_attn=channel_attn,
-                    reduction=reduction,
+                # ChannelAttnBlock(
+                #     in_channels=in_channels+content_channel,
+                #     out_channels=in_channels,
+                #     groups=resnet_groups,
+                #     non_linearity=resnet_act_fn,
+                #     channel_attn=channel_attn,
+                #     reduction=reduction,
+                # )
+                SpatialTransformer(
+                    in_channels,
+                    attn_num_head_channels,
+                    in_channels // attn_num_head_channels,
+                    depth=1,
+                    context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -316,14 +333,14 @@ class MCADownBlock2D(nn.Module):
         for content_attn, resnet, style_attn in zip(self.content_attentions, self.resnets, self.style_attentions):
             
             # content
-            current_content_feature = encoder_hidden_states[1][index]
+            current_content_feature = encoder_hidden_states[1]#[index] # content_residual_features
             hidden_states = content_attn(hidden_states, current_content_feature)
             
             # t_embed
             hidden_states = resnet(hidden_states, temb)
 
             # style
-            current_style_feature = encoder_hidden_states[0]
+            current_style_feature = encoder_hidden_states[0] # style_img_feature
             batch_size, channel, height, width = current_style_feature.shape
             current_style_feature = current_style_feature.permute(0, 2, 3, 1).reshape(batch_size, height*width, channel)
             hidden_states = style_attn(hidden_states, context=current_style_feature)
@@ -445,7 +462,8 @@ class StyleRSIUpBlock2D(nn.Module):
     ):
         super().__init__()
         resnets = []
-        attentions = []
+        style_attentions = []
+        content_attentions = []
         sc_interpreter_offsets = []
         dcn_deforms = []
 
@@ -490,7 +508,17 @@ class StyleRSIUpBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
+            style_attentions.append(
+                SpatialTransformer(
+                    out_channels,
+                    attn_num_head_channels,
+                    out_channels // attn_num_head_channels,
+                    depth=1,
+                    context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
+                )
+            )
+            content_attentions.append(
                 SpatialTransformer(
                     out_channels,
                     attn_num_head_channels,
@@ -502,7 +530,8 @@ class StyleRSIUpBlock2D(nn.Module):
             )
         self.sc_interpreter_offsets = nn.ModuleList(sc_interpreter_offsets)
         self.dcn_deforms = nn.ModuleList(dcn_deforms)
-        self.attentions = nn.ModuleList(attentions)
+        self.style_attentions = nn.ModuleList(style_attentions)
+        self.content_attentions = nn.ModuleList(content_attentions)
         self.resnets = nn.ModuleList(resnets)
 
         self.num_layers = num_layers
@@ -538,14 +567,15 @@ class StyleRSIUpBlock2D(nn.Module):
         style_structure_features,
         temb=None,
         encoder_hidden_states=None,
+        content_hidden_state=None,
         upsample_size=None,
     ):
         total_offset = 0
 
         style_content_feat = style_structure_features[-self.upblock_index-2]
 
-        for i, (sc_inter_offset, dcn_deform, resnet, attn) in \
-            enumerate(zip(self.sc_interpreter_offsets, self.dcn_deforms, self.resnets, self.attentions)):
+        for i, (sc_inter_offset, dcn_deform, resnet, style_attn, content_attn) in \
+            enumerate(zip(self.sc_interpreter_offsets, self.dcn_deforms, self.resnets, self.style_attentions, self.content_attentions)):
             # pop res hidden states 
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -572,11 +602,15 @@ class StyleRSIUpBlock2D(nn.Module):
 
                 hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn), hidden_states, encoder_hidden_states
+                    create_custom_forward(style_attn), hidden_states, encoder_hidden_states
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(content_attn), hidden_states, encoder_hidden_states
                 )
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(hidden_states, context=encoder_hidden_states)
+                hidden_states = style_attn(hidden_states, context=encoder_hidden_states)
+                hidden_states = content_attn(hidden_states, context=content_hidden_state)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

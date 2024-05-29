@@ -8,12 +8,42 @@ import torchvision.transforms as transforms
 
 def get_nonorm_transform(resolution):
     nonorm_transform =  transforms.Compose(
-            [transforms.Resize((resolution, resolution), 
+            [transforms.Resize(
+                # (resolution, resolution), 
+                (64, 256),
                                interpolation=transforms.InterpolationMode.BILINEAR), 
              transforms.ToTensor()])
     return nonorm_transform
 
+vocab = {
+    'IAM': 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+}
 
+class Tokenizer:
+    def __init__(self, dset_name, max_length=10) -> None:
+        self.vocab = vocab[dset_name]
+        # self.special_chars = {'GO_TOKEN': 0, 'END_TOKEN': 1, 'PAD_TOKEN': 2}
+        self.special_chars = {'PAD_TOKEN': 0}
+        self.str2idx = {char:(idx+len(self.special_chars)) for idx, char in enumerate(self.vocab)}
+        self.idx2str = {v:k for k, v in self.str2idx.items()}
+        self.vocab_size = len(self.vocab) + len(self.special_chars.keys())
+        self.batch_max_length = max_length #+ 2
+        
+    def encode(self, text):       
+        text = [self.str2idx[char] for char in text]
+        # text = [self.special_chars['GO_TOKEN']] + text + [self.special_chars['END_TOKEN']]
+        pad_len = self.batch_max_length - len(text)
+        if pad_len > 0:
+            text = text + [self.special_chars['PAD_TOKEN']]*pad_len
+        return text
+
+    def decode(self, ids):
+        chars = list()
+        for id in ids:
+            if id not in self.special_chars.values():
+                chars.append(self.idx2str[id])
+        return ''.join(chars)
+    
 class FontDataset(Dataset):
     """The dataset of font generation  
     """
@@ -29,6 +59,7 @@ class FontDataset(Dataset):
         self.get_path()
         self.transforms = transforms
         self.nonorm_transforms = get_nonorm_transform(args.resolution)
+        self.tokenizer = Tokenizer('IAM', 16)
 
     def get_path(self):
         self.target_images = []
@@ -49,8 +80,10 @@ class FontDataset(Dataset):
         style, content = target_image_name.split('.')[0].split('+')
         
         # Read content image
-        content_image_path = f"{self.root}/{self.phase}/ContentImage/{content}.jpg"
-        content_image = Image.open(content_image_path).convert('RGB')
+        # content_image_path = f"{self.root}/{self.phase}/ContentImage/arial/{content}.jpg"
+        # content_image = Image.open(content_image_path).convert('RGB')
+        content_image = self.tokenizer.encode(content)
+        content_image = torch.tensor(content_image,dtype=torch.int64).long()
 
         # Random sample used for style image
         images_related_style = self.style_to_images[style].copy()
@@ -63,7 +96,7 @@ class FontDataset(Dataset):
         nonorm_target_image = self.nonorm_transforms(target_image)
 
         if self.transforms is not None:
-            content_image = self.transforms[0](content_image)
+            # content_image = self.transforms[0](content_image)
             style_image = self.transforms[1](style_image)
             target_image = self.transforms[2](target_image)
         

@@ -9,11 +9,13 @@ import torch
 import torchvision.transforms as transforms
 from accelerate.utils import set_seed
 
+from dataset.font_dataset import Tokenizer
 from src import (FontDiffuserDPMPipeline,
                  FontDiffuserModelDPM,
                  build_ddpm_scheduler,
                  build_unet,
                  build_content_encoder,
+                 build_label_encoder,
                  build_style_encoder)
 from utils import (ttf2im,
                    load_ttf,
@@ -39,12 +41,12 @@ def arg_parse():
     parser.add_argument("--save_image_dir", type=str, default=None,
                         help="The saving directory.")
     parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("--ttf_path", type=str, default="ttf/KaiXinSongA.ttf")
+    parser.add_argument("--ttf_path", type=str, default="ttf/arial.ttf")
     args = parser.parse_args()
     style_image_size = args.style_image_size
     content_image_size = args.content_image_size
-    args.style_image_size = (style_image_size, style_image_size)
-    args.content_image_size = (content_image_size, content_image_size)
+    args.style_image_size = (64, 256) #(style_image_size, style_image_size)
+    args.content_image_size = (64, 256) #(content_image_size, content_image_size)
 
     return args
 
@@ -54,11 +56,27 @@ def image_process(args, content_image=None, style_image=None):
         # Read content image and style image
         if args.character_input:
             assert args.content_character is not None, "The content_character should not be None."
-            if not is_char_in_font(font_path=args.ttf_path, char=args.content_character):
-                return None, None
+            # if not is_char_in_font(font_path=args.ttf_path, char=args.content_character):
+            #     return None, None
+            # font = load_ttf(ttf_path=args.ttf_path)
+            # content_image = ttf2im(font=font, char=args.content_character)
+            # content_image_pil = content_image.copy()
+            
+            import re
+            pattern = r'\/(\d{3})\/[^\/]+$'
+            match = re.search(pattern, args.style_image_path)
+            if match:
+                style = match.group(1)
+                print(f"Folder: {style}")
+            else:
+                print("No match found")
             font = load_ttf(ttf_path=args.ttf_path)
-            content_image = ttf2im(font=font, char=args.content_character)
-            content_image_pil = content_image.copy()
+            content_image_pil = ttf2im(font=font, char=style, height=64, width=256)
+            content_image_pil.save('test.png')
+            tokenizer = Tokenizer('IAM',16)
+            content_image = tokenizer.encode(args.content_character)
+            content_image = torch.tensor([content_image])
+            print(content_image)
         else:
             content_image = Image.open(args.content_image_path).convert('RGB')
             content_image_pil = None
@@ -74,21 +92,20 @@ def image_process(args, content_image=None, style_image=None):
         else:
             assert content_image is not None, "The content image should not be None."
         content_image_pil = None
-        
+        print('Reach false')
     ## Dataset transform
-    content_inference_transforms = transforms.Compose(
-        [transforms.Resize(args.content_image_size, \
-                            interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5])])
+    # content_inference_transforms = transforms.Compose(
+    #     [transforms.Resize(args.content_image_size, \
+    #                         interpolation=transforms.InterpolationMode.BILINEAR),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize([0.5], [0.5])])
     style_inference_transforms = transforms.Compose(
         [transforms.Resize(args.style_image_size, \
                            interpolation=transforms.InterpolationMode.BILINEAR),
          transforms.ToTensor(),
          transforms.Normalize([0.5], [0.5])])
-    content_image = content_inference_transforms(content_image)[None, :]
+    # content_image = content_inference_transforms(content_image)[None, :]
     style_image = style_inference_transforms(style_image)[None, :]
-
     return content_image, style_image, content_image_pil
 
 def load_fontdiffuer_pipeline(args):
@@ -99,9 +116,18 @@ def load_fontdiffuer_pipeline(args):
     style_encoder.load_state_dict(torch.load(f"{args.ckpt_dir}/style_encoder.pth"))
     content_encoder = build_content_encoder(args=args)
     content_encoder.load_state_dict(torch.load(f"{args.ckpt_dir}/content_encoder.pth"))
+    label_encoder = build_label_encoder(args=args)
+    total_model = torch.load(f"{args.ckpt_dir}/total_model.pth")
+    label_encoder_state_dict = {
+        'linear.weight': total_model['module.label_encoder.linear.weight'],
+        'linear.bias': total_model['module.label_encoder.linear.bias'],
+    }
+    label_encoder.load_state_dict(label_encoder_state_dict)
+    print('Successfully load label encoder')
     model = FontDiffuserModelDPM(
         unet=unet,
         style_encoder=style_encoder,
+        label_encoder=label_encoder,
         content_encoder=content_encoder)
     model.to(args.device)
     print("Loaded the model state_dict successfully!")

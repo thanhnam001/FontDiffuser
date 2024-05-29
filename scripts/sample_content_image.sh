@@ -1,9 +1,9 @@
 python sample.py \
-    --ckpt_dir="ckpt/" \
-    --content_image_path="data_examples/sampling/example_content.jpg" \
-    --style_image_path="data_examples/sampling/example_style.jpg" \
+    --ckpt_dir="outputs/v2/global_step_40000/" \
+    --content_image_path="/data/ocr/namvt17/FontDiffuser/iam_data/train/ContentImage/arial/grey.jpg" \
+    --style_image_path="/data/ocr/namvt17/FontDiffuser/iam_data/train/TargetImage/023/023+meeting.png" \
     --save_image \
-    --save_image_dir="outputs/" \
+    --save_image_dir="outputs/v2/40k" \
     --device="cuda:0" \
     --algorithm_type="dpmsolver++" \
     --guidance_type="classifier-free" \

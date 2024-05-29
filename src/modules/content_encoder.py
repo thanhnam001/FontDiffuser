@@ -1,5 +1,9 @@
 import functools
+import math
+import pickle
+from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,6 +13,8 @@ from torch.nn import Parameter as P
 from diffusers import ModelMixin
 from diffusers.configuration_utils import (ConfigMixin, 
                                            register_to_config)
+
+from src.modules.attention import BasicTransformerBlock
 
 
 def proj(x, y):
@@ -333,6 +339,9 @@ class GBlock2(nn.Module):
 def content_encoder_arch(ch =64,out_channel_multiplier = 1, input_nc = 3):
     arch = {}
     n=2
+    arch[64] = {'in_channels':   [input_nc] + [ch*item for item in  [1,2]],
+                                'out_channels' : [item * ch for item in [1,2,4]],
+                                'resolution': [40,20,10]}
     arch[80] = {'in_channels':   [input_nc] + [ch*item for item in  [1,2]],
                                 'out_channels' : [item * ch for item in [1,2,4]],
                                 'resolution': [40,20,10]}
@@ -379,7 +388,8 @@ class ContentEncoder(ModelMixin, ConfigMixin):
             self.save_featrues = [0,1,2,3,4]
         elif self.resolution == 256:
             self.save_featrues = [0,1,2,3,4,5]
-        
+        elif self.resolution == 64:
+            self.save_featrues = [0,1,2,3,4]
         self.out_channel_nultipiler = 1
         self.arch = content_encoder_arch(self.ch, self.out_channel_nultipiler,input_nc)[resolution]
 
@@ -392,7 +402,7 @@ class ContentEncoder(ModelMixin, ConfigMixin):
                                                     num_svs=num_G_SVs, num_itrs=num_G_SV_itrs,
                                                     eps=self.SN_eps)
         self.blocks = []
-        for index in range(len(self.arch['out_channels'])):
+        for index in range(len(self.arch['out_channels'][:-1])):
 
             self.blocks += [[DBlock(in_channels=self.arch['in_channels'][index],
                                              out_channels=self.arch['out_channels'][index],
@@ -431,5 +441,116 @@ class ContentEncoder(ModelMixin, ConfigMixin):
             for block in blocklist:
                 h = block(h)            
             if index in self.save_featrues[:-1]:
-                residual_features.append(h)        
+                residual_features.append(h)     
+        residual_features.append(h)        
         return h,residual_features
+
+class UnifontModule(torch.nn.Module):
+    '''https://github.com/aimagelab/VATr/blob/7952b16e4549811c442fb46ed49ac2585908e832/models/unifont_module.py#L6'''
+    def __init__(self, 
+                 alphabet,
+                 out_dim,
+                 device='cuda', 
+                 input_type='unifont',
+                 linear=True):
+        super(UnifontModule, self).__init__()
+        self.device = device
+        self.alphabet = alphabet
+        self.symbols = self.get_symbols('unifont')
+        self.symbols_repr = self.get_symbols(input_type)
+
+        if linear:
+            self.linear = torch.nn.Linear(self.symbols_repr.shape[1], out_dim)
+        else:
+            self.linear = torch.nn.Identity()
+
+    def get_symbols(self, input_type):
+        with open(f"configs/{input_type}.pickle", "rb") as f:
+            symbols = pickle.load(f)
+
+        symbols = {sym['idx'][0]: sym['mat'].astype(np.float32).flatten() for sym in symbols}
+        # self.special_symbols = [self.symbols[ord(char)] for char in special_alphabet]
+        symbols = [symbols[ord(char)] for char in self.alphabet]
+        symbols.insert(0, np.zeros_like(symbols[0]))
+        symbols = np.stack(symbols)
+        return torch.from_numpy(symbols).float().to(self.device)
+
+    def forward(self, QR):
+        return self.linear(self.symbols_repr[QR])
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+class ContentEncoderV2(nn.Module):
+    """
+    Transformer block for image-like data. First, project the input (aka embedding) and reshape to b, t, d. Then apply
+    standard transformer action. Finally, reshape to image.
+
+    Parameters:
+        in_channels (:obj:`int`): The number of channels in the input and output.
+        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        d_head (:obj:`int`): The number of channels in each head.
+        depth (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (:obj:`float`, *optional*, defaults to 0.1): The dropout probability to use.
+        context_dim (:obj:`int`, *optional*): The number of context dimensions to use.
+    """
+
+    def __init__(
+        self,
+        alphabet: str,
+        in_channels: int,
+        n_heads: int,
+        d_head: int,
+        depth: int = 1,
+        dropout: float = 0.0,
+        context_dim: Optional[int] = None,
+    ):
+        super().__init__()
+        self.n_heads = n_heads
+        self.d_head = d_head
+        self.in_channels = in_channels
+        inner_dim = n_heads * d_head
+        self.pos_encoder = PositionalEncoding(in_channels, dropout)
+
+        self.unifont_module = UnifontModule(alphabet, in_channels)
+
+        self.transformer_blocks = nn.ModuleList(
+            [
+                BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim)
+                for d in range(depth)
+            ]
+        )
+        self.proj_out = nn.Linear(inner_dim, in_channels)
+
+    def _set_attention_slice(self, slice_size):
+        for block in self.transformer_blocks:
+            block._set_attention_slice(slice_size)
+
+    def forward(self, hidden_states, context=None):
+        # note: if no context is given, cross-attention defaults to self-attention
+        hidden_states = self.unifont_module(hidden_states)
+        # hidden_states = self.pos_encoder(hidden_states)
+        residual = hidden_states
+        # here change the shape torch.Size([1, 4096, 128])
+        for block in self.transformer_blocks:
+            hidden_states = block(hidden_states, context=context)  # hidden_states: torch.Size([1, 4096, 128])
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states + residual

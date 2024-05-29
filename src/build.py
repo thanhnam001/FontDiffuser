@@ -1,9 +1,10 @@
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from src import (ContentEncoder, 
+                 ContentEncoderV2,
                  StyleEncoder, 
                  UNet,
-                 SCR)
-
+                 SCR,
+                 UnifontModule)
 
 def build_unet(args):
     unet = UNet(
@@ -52,6 +53,18 @@ def build_content_encoder(args):
     print("Get CG-GAN Content Encoder!")
     return content_image_encoder
 
+def build_label_encoder(args):
+    label_encoder = UnifontModule(
+        alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        out_dim=1024, # see cross attention,
+        device='cuda'
+    )
+    # label_encoder = ContentEncoderV2('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+    #                                  in_channels=1024,
+    #                                  n_heads=8,
+    #                                  d_head=128,)
+    print('Get label encoder')
+    return label_encoder
 
 def build_scr(args):
     scr = SCR(
