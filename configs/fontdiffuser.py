@@ -8,6 +8,8 @@ def get_parser():
     parser.add_argument("--experience_name", type=str, default="fontdiffuer_training")
     parser.add_argument("--data_root", type=str, default=None, 
                         help="The font dataset root path.",)
+    parser.add_argument("--image_transcription", type=str, default='/data/ocr/namvt17/HandwrittenDiffusion/IAM_transcription.json', 
+                        help="The font dataset transcription path.",)
     parser.add_argument("--output_dir", type=str, default=None, 
                         help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--report_to", type=str, default="tensorboard")

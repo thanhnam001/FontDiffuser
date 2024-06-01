@@ -3,6 +3,7 @@ import math
 import pickle
 from typing import Optional
 
+from einops import rearrange
 import numpy as np
 import torch
 import torch.nn as nn
@@ -473,9 +474,10 @@ class UnifontModule(torch.nn.Module):
         symbols = [symbols[ord(char)] for char in self.alphabet]
         symbols.insert(0, np.zeros_like(symbols[0]))
         symbols = np.stack(symbols)
-        return torch.from_numpy(symbols).float().to(self.device)
+        return torch.from_numpy(symbols).float()
 
     def forward(self, QR):
+        self.symbols_repr=self.symbols_repr.to(QR.device)
         return self.linear(self.symbols_repr[QR])
 
 class PositionalEncoding(nn.Module):
@@ -547,10 +549,11 @@ class ContentEncoderV2(nn.Module):
     def forward(self, hidden_states, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         hidden_states = self.unifont_module(hidden_states)
-        # hidden_states = self.pos_encoder(hidden_states)
+        hidden_states = rearrange(hidden_states, 'b l c -> l b c')
+        hidden_states = self.pos_encoder(hidden_states)
+        hidden_states = rearrange(hidden_states, 'l b c -> b l c')
         residual = hidden_states
-        # here change the shape torch.Size([1, 4096, 128])
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=context)  # hidden_states: torch.Size([1, 4096, 128])
+            hidden_states = block(hidden_states, context=context)  # hidden_states: torch.Size([1, 16, 1024])
         hidden_states = self.proj_out(hidden_states)
         return hidden_states + residual

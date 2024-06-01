@@ -1,0 +1,42 @@
+{
+  "0": {
+    "image": "a03-034-00-00.png",
+    "s_id": "049",
+    "label": "Members"
+  },
+  "1": {
+    "image": "a03-034-00-01.png",
+    "s_id": "049",
+    "label": "of"
+  },
+  "2": {
+    "image": "a03-034-00-02.png",
+    "s_id": "049",
+    "label": "the"
+  },
+  "3": {
+    "image": "a03-034-00-03.png",
+    "s_id": "049",
+    "label": "Cabinet"
+  },
+  "4": {
+    "image": "a03-034-00-04.png",
+    "s_id": "049",
+    "label": "are"
+  },
+  "5": {
+    "image": "a03-034-00-05.png",
+    "s_id": "049",
+    "label": "basing"
+  },
+  "6": {
+    "image": "a03-034-00-06.png",
+    "s_id": "049",
+    "label": "their"
+  },
+  "7": {
+    "image": "a03-034-00-08.png",
+    "s_id": "049",
+    "label": "on"
+  }
+}

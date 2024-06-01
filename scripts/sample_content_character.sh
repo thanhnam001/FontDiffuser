@@ -1,10 +1,10 @@
 python sample.py \
-    --ckpt_dir="outputs/v2/global_step_80000/" \
-    --style_image_path="/data/ocr/namvt17/FontDiffuser/iam_data/train/TargetImage/094/094+leading.png" \
+    --ckpt_dir="outputs/v4/global_step_160000/" \
+    --style_image_path="/data/ocr/namvt17/FontDiffuser/iam_data/train/TargetImage/666/666+Our.png" \
     --save_image \
     --character_input \
-    --content_character="defence" \
-    --save_image_dir="outputs/v2/80k" \
+    --content_character="if" \
+    --save_image_dir="outputs/v4/160k" \
     --device="cuda:0" \
     --algorithm_type="dpmsolver++" \
     --guidance_type="classifier-free" \

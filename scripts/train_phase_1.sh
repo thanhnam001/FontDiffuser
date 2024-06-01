@@ -1,8 +1,8 @@
-CUDA_VISIBLE_DEVICES=2 torchrun --nproc_per_node=1 --nnodes=1 train3.py \
+CUDA_VISIBLE_DEVICES=1 torchrun --nproc_per_node=1 --nnodes=1 train3.py \
     --seed=123 \
     --experience_name="FontDiffuser_training_phase_1" \
-    --data_root="iam_data" \
-    --output_dir="outputs/v3" \
+    --data_root="/data/ocr/namvt17/WordStylist/data" \
+    --output_dir="outputs/v4" \
     --report_to="tensorboard" \
     --resolution=96 \
     --style_image_size=96 \
@@ -15,7 +15,7 @@ CUDA_VISIBLE_DEVICES=2 torchrun --nproc_per_node=1 --nnodes=1 train3.py \
     --perceptual_coefficient=0.01 \
     --offset_coefficient=0.5 \
     --max_train_steps=440000 \
-    --ckpt_interval=40000 \
+    --ckpt_interval=20000 \
     --gradient_accumulation_steps=1 \
     --log_interval=50 \
     --learning_rate=1e-4 \

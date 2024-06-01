@@ -1,7 +1,8 @@
 import os
 import random
+import json
 from PIL import Image
-
+from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
@@ -56,6 +57,7 @@ class FontDataset(Dataset):
             self.num_neg = args.num_neg
         
         # Get Data path
+        self.image_transcription = args.image_transcription
         self.get_path()
         self.transforms = transforms
         self.nonorm_transforms = get_nonorm_transform(args.resolution)
@@ -65,19 +67,37 @@ class FontDataset(Dataset):
         self.target_images = []
         # images with related style  
         self.style_to_images = {}
-        target_image_dir = f"{self.root}/{self.phase}/TargetImage"
-        for style in os.listdir(target_image_dir):
-            images_related_style = []
-            for img in os.listdir(f"{target_image_dir}/{style}"):
-                img_path = f"{target_image_dir}/{style}/{img}"
-                self.target_images.append(img_path)
-                images_related_style.append(img_path)
-            self.style_to_images[style] = images_related_style
+        with open(self.image_transcription) as f:
+            transcription = json.load(f)
+        for id, obj in tqdm(transcription.items()):
+            image = obj['image']
+            wid = obj['s_id']
+            label = obj['label']
+            img_dir = os.path.join(self.root, image)
+            self.target_images.append(
+                {'image': img_dir,
+                 'wid': wid,
+                 'label': label
+                 }
+            )
+            if self.style_to_images.get(wid, None) == None:
+                self.style_to_images[wid] = []
+            self.style_to_images[wid].append(img_dir)
+        print('Done read data')
+        # target_image_dir = f"{self.root}/{self.phase}/TargetImage"
+        # for style in os.listdir(target_image_dir):
+        #     images_related_style = []
+        #     for img in os.listdir(f"{target_image_dir}/{style}"):
+        #         img_path = f"{target_image_dir}/{style}/{img}"
+        #         self.target_images.append(img_path)
+        #         images_related_style.append(img_path)
+        #     self.style_to_images[style] = images_related_style
 
     def __getitem__(self, index):
-        target_image_path = self.target_images[index]
-        target_image_name = target_image_path.split('/')[-1]
-        style, content = target_image_name.split('.')[0].split('+')
+        target_image = self.target_images[index]
+        target_image_path, style, content = target_image['image'], target_image['wid'], target_image['label']
+        # target_image_name = target_image_path.split('/')[-1]
+        # style, content = target_image_name.split('.')[0].split('+')
         
         # Read content image
         # content_image_path = f"{self.root}/{self.phase}/ContentImage/arial/{content}.jpg"

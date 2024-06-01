@@ -117,12 +117,12 @@ def load_fontdiffuer_pipeline(args):
     content_encoder = build_content_encoder(args=args)
     content_encoder.load_state_dict(torch.load(f"{args.ckpt_dir}/content_encoder.pth"))
     label_encoder = build_label_encoder(args=args)
-    total_model = torch.load(f"{args.ckpt_dir}/total_model.pth")
-    label_encoder_state_dict = {
-        'linear.weight': total_model['module.label_encoder.linear.weight'],
-        'linear.bias': total_model['module.label_encoder.linear.bias'],
-    }
-    label_encoder.load_state_dict(label_encoder_state_dict)
+    # total_model = torch.load(f"{args.ckpt_dir}/total_model.pth")
+    # label_encoder_state_dict = {
+    #     'linear.weight': total_model['module.label_encoder.linear.weight'],
+    #     'linear.bias': total_model['module.label_encoder.linear.bias'],
+    # }
+    label_encoder.load_state_dict(torch.load(f"{args.ckpt_dir}/label_encoder.pth"))
     print('Successfully load label encoder')
     model = FontDiffuserModelDPM(
         unet=unet,

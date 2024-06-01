@@ -54,15 +54,15 @@ def build_content_encoder(args):
     return content_image_encoder
 
 def build_label_encoder(args):
-    label_encoder = UnifontModule(
-        alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-        out_dim=1024, # see cross attention,
-        device='cuda'
-    )
-    # label_encoder = ContentEncoderV2('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-    #                                  in_channels=1024,
-    #                                  n_heads=8,
-    #                                  d_head=128,)
+    # label_encoder = UnifontModule(
+    #     alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+    #     out_dim=1024, # see cross attention,
+    #     device='cuda'
+    # )
+    label_encoder = ContentEncoderV2('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+                                     in_channels=1024,
+                                     n_heads=8,
+                                     d_head=128,)
     print('Get label encoder')
     return label_encoder
 
